@@ -13,6 +13,7 @@ import copy
 import numpy as np
 import random as _random
 from idata.augment.utils import *
+from typing import Any, List, Tuple, Sequence, Union
 
 __all__ = [
     # union
@@ -23,18 +24,23 @@ __all__ = [
 ]
 
 
-def adjust_gamma(img, gamma: float = 0.5):
+def adjust_gamma(img, gamma: float = 0.5, photo_mask=None):
     """ 图像Gamma变换
     :param img: Numpy image.
     :param gamma: [0.5~2]，由亮变暗。
     """
 
-    if not _is_numpy_image(img):
+    if not is_numpy_image(img):
         raise TypeError('img should be Numpy Image. Got {}'.format(type(img)))
     if gamma < 0:
         raise ValueError('Gamma should be a non-negative real number')
 
     def gamma_gray(gray, gamma):
+        if photo_mask is not None:
+            if len(photo_mask.shape) != 2:
+                raise TypeError("cv2 function `adjust_gamma` mask have shape of (h, w)")
+            h, w = gray.shape
+            gamma = cv2.resize(photo_mask, (w, h)) * gamma
         return (np.power(gray.astype(np.float16) / float(np.max(gray)), gamma) * 255).astype(np.uint8)
 
     ycrcb = cv2.cvtColor(img, cv2.COLOR_BGR2YCR_CB)
@@ -44,7 +50,7 @@ def adjust_gamma(img, gamma: float = 0.5):
     return cv2.cvtColor(ycrcb, cv2.COLOR_YCR_CB2BGR)
 
 
-def grayscale(img, random: bool = False):
+def grayscale(img, avg=None):
     """ 相机自动白平衡-灰度世界假设, https://blog.csdn.net/dcrmg/article/details/53545510
     扩展: https://www.cnblogs.com/hangy/p/12569157.html
     returned image is 3 channel with r == g == b
@@ -54,17 +60,25 @@ def grayscale(img, random: bool = False):
         return img
 
     img = img.astype(np.float16)
-    avgB = np.average(img[:, :, 0])
-    avgG = np.average(img[:, :, 1])
-    avgR = np.average(img[:, :, 2])
-    if not random:
-        avg = (avgB + avgG + avgR) / 3
+    # avgB = np.average(img[:, :, 0])
+    # avgG = np.average(img[:, :, 1])
+    # avgR = np.average(img[:, :, 2])
+    avgB, avgG, avgR = np.average(np.average(img, axis=0), axis=0)
+
+    if avg is not None:
+        if isinstance(avg, int):
+            avg_list = [avg for _ in range(3)]
+        elif isinstance(avg, List) or isinstance(avg, Tuple):
+            assert len(avg) == 3
+            avg_list = list(avg)
+        else:
+            raise ValueError("avg should: None, int, list(3,), tuple(3,)")
     else:
-        avg = _random.randint(int(min(min(avgR, avgB), avgG)), int(max(max(avgR, avgB), avgG)))
-    print("r,g,b:", avgR, avgG, avgB, avg)
-    img[:, :, 0] = np.minimum(img[:, :, 0] * (avg / avgB), 255)
-    img[:, :, 1] = np.minimum(img[:, :, 1] * (avg / avgG), 255)
-    img[:, :, 2] = np.minimum(img[:, :, 2] * (avg / avgR), 255)
+        avg_list = [(avgB + avgG + avgR) / 3 for _ in range(3)]
+
+    img[:, :, 0] = np.minimum(img[:, :, 0] * (avg_list[0] / avgB), 255)
+    img[:, :, 1] = np.minimum(img[:, :, 1] * (avg_list[1] / avgG), 255)
+    img[:, :, 2] = np.minimum(img[:, :, 2] * (avg_list[2] / avgR), 255)
     return img.astype(np.uint8)
 
 

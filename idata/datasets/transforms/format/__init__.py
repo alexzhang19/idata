@@ -124,7 +124,7 @@ class Normalize(object):
         self.std = std
         self.inplace = inplace
 
-    def __call__(self, result, keys=[TS_IMG]):
+    def __call__(self, result):
         result[TS_IMG] = F.normalize(result[TS_IMG], self.mean, self.std, self.inplace)
         return result
 

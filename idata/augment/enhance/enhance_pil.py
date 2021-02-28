@@ -25,7 +25,7 @@ def adjust_gamma(pil_img, gamma, gain=1):
       :param gamma: [0.5~2]，由亮变暗。
    """
 
-    if not _is_pil_image(pil_img):
+    if not is_pil_image(pil_img):
         raise TypeError('img should be PIL Image. Got {}'.format(type(pil_img)))
     if gamma < 0:
         raise ValueError('Gamma should be a non-negative real number')
@@ -45,7 +45,7 @@ def adjust_brightness(img, brightness_factor):
     """
 
     print("brightness_factorggggggggggg: ", brightness_factor)
-    if not _is_pil_image(img):
+    if not is_pil_image(img):
         raise TypeError('img should be PIL Image. Got {}'.format(type(img)))
 
     enhancer = ImageEnhance.Brightness(img)
@@ -61,7 +61,7 @@ def adjust_saturation(img, saturation_factor):
     :return: 色彩饱和度调整后图像
     """
 
-    if not _is_pil_image(img):
+    if not is_pil_image(img):
         raise TypeError('img should be PIL Image. Got {}'.format(type(img)))
 
     enhancer = ImageEnhance.Color(img)
@@ -77,7 +77,7 @@ def adjust_contrast(img, contrast_factor):
     :return: 对比度调整后图像
     """
 
-    if not _is_pil_image(img):
+    if not is_pil_image(img):
         raise TypeError('img should be PIL Image. Got {}'.format(type(img)))
 
     enhancer = ImageEnhance.Contrast(img)
@@ -92,7 +92,7 @@ def adjust_sharpness(img, sharpness_factor):
     :return: 对比度调整后图像
     """
 
-    if not _is_pil_image(img):
+    if not is_pil_image(img):
         raise TypeError('img should be PIL Image. Got {}'.format(type(img)))
 
     enhancer = ImageEnhance.Sharpness(img)
@@ -110,7 +110,7 @@ def adjust_hue(img, hue_factor):
     if not (-0.5 <= hue_factor <= 0.5):
         raise ValueError('hue_factor ({}) is not in [-0.5, 0.5].'.format(hue_factor))
 
-    if not _is_pil_image(img):
+    if not is_pil_image(img):
         raise TypeError('img should be PIL Image. Got {}'.format(type(img)))
 
     input_mode = img.mode

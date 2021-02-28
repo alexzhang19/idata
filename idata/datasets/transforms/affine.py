@@ -14,18 +14,22 @@ import random
 import numbers
 import warnings
 import numpy as np
-from PIL import Image
 from .compose import *
 import idata.augment.affine as F
 from collections.abc import Sequence, Iterable
-from idata.augment.utils import _get_image_size, np_to_pil
+from idata.augment.utils import get_image_shape
 
 __all__ = [
     "Resize", "Pad", "CenterCrop", "RandomHorizontalFlip", "RandomVerticalFlip",
-    "RandomRotation",
-    # "RandomAffine", "RandomPerspective",
-    # "RandomCrop", "RandomResizedCrop",
+    "RandomRotation", "RandomAffine", "RandomPerspective",
+    "RandomCrop", "RandomResizedCrop",
 ]
+
+"""
+    以cv2风格为准：
+    get_image_shape: (h, w)
+    size: (w, h)
+"""
 
 
 class Resize(object):
@@ -69,7 +73,8 @@ class Pad(object):
     :param img: Numpy Image or PIL Image.
     :param padding: int or tuple,几种形式:
             padding=50, 则等价于,  pad_left = pad_right = pad_top = pad_bottom = padding
-            padding=(50, 100), 则等价于,
+            padding=(50, 100), 则等价于, (pad_left=pad_right=50, pad_top=pad_bottom=100)
+            padding=(50, 100, 150, 200),等价于(pad_left, pad_top, pad_right, pad_bottom)
     :param padding_mode: 以具体图像类型定
     :param fill: borderType为CONSTANT时有效, 设置填充的像素值.
     :return: Padding image
@@ -92,7 +97,9 @@ class Pad(object):
         # print("Pad meta:", meta)
 
         if TS_SEG in result:
-            result[TS_SEG] = F.pad(result[TS_SEG], self.padding, result[TS_IGNORE_LABEL], self.padding_mode)
+            ignore_label = result[TS_IGNORE_LABEL]
+            result[TS_SEG] = F.pad(result[TS_SEG], self.padding, ignore_label,
+                                   padding_mode="constant")
 
         return result
 
@@ -107,36 +114,25 @@ class CenterCrop(object):
     :param size：  (w, h) or int
     """
 
-    def __init__(self, size, ignore_label=255):
+    def __init__(self, size, fill=0, padding_mode='constant'):
         if isinstance(size, numbers.Number):
             self.size = (int(size), int(size))
         else:
             self.size = size
-        self.ignore_label = ignore_label
+        self.fill = fill
+        self.padding_mode = padding_mode
 
     def __call__(self, result):
-        meta = dict(org_shape=_get_image_size(result[TS_IMG]))
-        result[TS_IMG] = F.center_crop(result[TS_IMG], self.size, meta=meta)
-        # print("CenterCrop meta:", meta)
+        meta = dict(org_shape=get_image_shape(result[TS_IMG]))
+        result[TS_IMG] = F.center_crop(result[TS_IMG], self.size, fill=self.fill,
+                                       padding_mode=self.padding_mode, meta=meta)
+        print("CenterCrop meta:", meta)
 
         if TS_SEG in result:
-            result[TS_SEG] = F.center_crop(result[TS_SEG], self.size)
-            result[TS_SEG] = self.seg_fill(result[TS_SEG], meta)
+            ignore_label = result[TS_IGNORE_LABEL]
+            result[TS_SEG] = F.center_crop(result[TS_SEG], self.size, fill=ignore_label,
+                                           padding_mode="constant")
         return result
-
-    def seg_fill(self, seg, meta):
-        m_crop = meta["crop"]
-        oh, ow = meta["org_shape"]
-        l, t, w, h = m_crop["left"], m_crop["top"], m_crop["width"], m_crop["height"]
-        if l < 0:
-            seg[:, 0:-l] = self.ignore_label
-        if t < 0:
-            seg[0:-t, :] = self.ignore_label
-        if w > ow:
-            seg[:, ow:w] = self.ignore_label
-        if h > oh:
-            seg[oh:h, :] = self.ignore_label
-        return seg
 
     def __repr__(self):
         return self.__class__.__name__ + '(size={0})'.format(self.size)
@@ -220,7 +216,8 @@ class RandomRotation(object):
         result[TS_IMG] = F.rotate(result[TS_IMG], angle, self.center, self.fill, self.resample, self.expand)
 
         if TS_SEG in result:
-            result[TS_SEG] = F.rotate(result[TS_SEG], angle, self.center, 255, "nearest", self.expand)
+            ignore_label = result[TS_IGNORE_LABEL]
+            result[TS_SEG] = F.rotate(result[TS_SEG], angle, self.center, ignore_label, "nearest", self.expand)
 
         return result
 
@@ -237,16 +234,100 @@ class RandomRotation(object):
 
 
 class RandomAffine(object):
-    pass
+    def __init__(self, distortion_scale=1 / 8, p=1, dsize=None, interpolation="linear", fill=0):
+        self.distortion_scale = distortion_scale
+        self.p = p
+        self.dsize = dsize
+        self.interpolation = interpolation
+        self.fill = fill
+
+    @staticmethod
+    def get_params(width, height, distortion_scale):
+        t_height = int(height // 4)
+        t_width = int(width // 4)
+
+        start_pts = [(t_width, t_height), (t_width * 3, t_height), (t_width * 2, t_height * 3)]
+
+        def range_size(x, scale):
+            return x + random.randint(0, int(scale)) * 2 - scale
+
+        scale_w = int(distortion_scale * width)
+        scale_h = int(distortion_scale * height)
+
+        end_pts = [(range_size(start_pts[0][0], scale_w), range_size(start_pts[0][1], scale_h)),
+                   (range_size(start_pts[1][0], scale_w), range_size(start_pts[1][1], scale_h)),
+                   (range_size(start_pts[2][0], scale_w), range_size(start_pts[2][1], scale_h))]
+        return np.array(start_pts, dtype=np.float32), np.array(end_pts, dtype=np.float32)
+
+    def __call__(self, result):
+        if torch.rand(1) > self.p:
+            return result
+
+        height, width = get_image_shape(result[TS_IMG])
+        start_pts, end_pts = self.get_params(height, width, self.distortion_scale)
+
+        result[TS_IMG] = F.affine(result[TS_IMG], start_pts, end_pts, dsize=self.dsize,
+                                  interpolation=self.interpolation, fill=self.fill)
+
+        if TS_SEG in result:
+            ignore_label = result[TS_IGNORE_LABEL]
+            result[TS_SEG] = F.affine(result[TS_SEG], start_pts, end_pts, dsize=self.dsize,
+                                      interpolation="nearest", fill=ignore_label)
+
+        return result
+
+    def __repr__(self):
+        return self.__class__.__name__ + '(p={})'.format(self.p)
 
 
 class RandomPerspective(object):
-    pass
+    """ 按概率随机执行透视变换，支持Numpy Image or PIL Image
+    :param distortion_scale:
+        example：RandomPerspective(distortion_scale=0.5, p=1)
+    """
 
+    def __init__(self, distortion_scale=0.2, p=0.5, dsize=None, interpolation="linear", fill=0):
+        self.p = p
+        self.interpolation = interpolation
+        self.distortion_scale = distortion_scale
+        self.fill = fill
+        self.dsize = dsize
 
-"""
-    基础功能扩展
-"""
+    def __call__(self, result):
+        if torch.rand(1) > self.p:
+            return result
+
+        height, width = get_image_shape(result[TS_IMG])
+        start_pts, end_pts = self.get_params(width, height, self.distortion_scale)
+
+        result[TS_IMG] = F.perspective(result[TS_IMG], start_pts, end_pts, dsize=self.dsize,
+                                       interpolation=self.interpolation, fill=self.fill)
+
+        if TS_SEG in result:
+            ignore_label = result[TS_IGNORE_LABEL]
+            result[TS_SEG] = F.perspective(result[TS_SEG], start_pts, end_pts, dsize=self.dsize,
+                                           interpolation="nearest", fill=ignore_label)
+
+        return result
+
+    @staticmethod
+    def get_params(width, height, distortion_scale):
+        half_height = int(height / 2)
+        half_width = int(width / 2)
+        topleft = (random.randint(0, int(distortion_scale * half_width)),
+                   random.randint(0, int(distortion_scale * half_height)))
+        topright = (random.randint(width - int(distortion_scale * half_width) - 1, width - 1),
+                    random.randint(0, int(distortion_scale * half_height)))
+        botright = (random.randint(width - int(distortion_scale * half_width) - 1, width - 1),
+                    random.randint(height - int(distortion_scale * half_height) - 1, height - 1))
+        botleft = (random.randint(0, int(distortion_scale * half_width)),
+                   random.randint(height - int(distortion_scale * half_height) - 1, height - 1))
+        startpoints = [(0, 0), (width - 1, 0), (width - 1, height - 1), (0, height - 1)]
+        endpoints = [topleft, topright, botright, botleft]
+        return startpoints, endpoints
+
+    def __repr__(self):
+        return self.__class__.__name__ + '(p={})'.format(self.p)
 
 
 class RandomCrop(object):
@@ -254,58 +335,57 @@ class RandomCrop(object):
     :param size: sequence(w, h) or int
     :param padding: int, [left/right, top/bottom], [left, top, right, bottom]
     :param fill:
-    :param padding_mode:
+    :param padding_mode: 'constant',
         example:  trans = RandomCrop((768, 500), pad_if_needed=True)
     """
 
-    def __init__(self, size, padding=None, fill=0, padding_mode=None):
+    def __init__(self, size, fill=0, padding_mode="constant"):
         if isinstance(size, numbers.Number):
             self.size = (int(size), int(size))
         else:
             self.size = size
-        self.padding = padding
         self.fill = fill
         self.padding_mode = padding_mode
 
     @staticmethod
     def get_params(img, output_size):
-        h, w = _get_image_size(img)
+        h, w = get_image_shape(img)
         tw, th = output_size
         if w == tw and h == th:
             return 0, 0, h, w
 
-        i = random.randint(0, h - th)
-        j = random.randint(0, w - tw)
-        return i, j, th, tw
+        # top, left, height, width
+        top = random.randint(0, h - th) if h > th else (h - th) // 2
+        left = random.randint(0, w - tw) if w > tw else (w - tw) // 2
+        return top, left, th, tw
 
-    def __call__(self, img):
-        if self.padding is not None:
-            img = F.pad(img, self.padding, self.fill, self.padding_mode)
+    def __call__(self, result):
+        # print("org img shape:", result[TS_IMG].shape)
+        top, left, height, width = self.get_params(result[TS_IMG], self.size)
+        # print("top, left, height, width:", top, left, height, width)
 
-        img_size = _get_image_size(img)
-        # pad the width if needed
-        if self.pad_if_needed and img_size[1] < self.size[0]:
-            img = F.pad(img, (self.size[0] - img_size[1], 0), self.fill, self.padding_mode)
-        # pad the height if needed
-        if self.pad_if_needed and img_size[0] < self.size[1]:
-            img = F.pad(img, (0, self.size[1] - img_size[0]), self.fill, self.padding_mode)
+        result[TS_IMG] = F.crop(result[TS_IMG], top, left, height, width,
+                                fill=self.fill, padding_mode=self.padding_mode)
+        if TS_SEG in result:
+            ignore_label = result[TS_IGNORE_LABEL]
+            result[TS_SEG] = F.crop(result[TS_SEG], top, left, height, width,
+                                    fill=ignore_label, padding_mode="constant")
 
-        i, j, h, w = self.get_params(img, self.size)
-
-        return F.crop(img, i, j, h, w)
+        return result
 
     def __repr__(self):
         return self.__class__.__name__ + '(size={0}, padding={1})'.format(self.size, self.padding)
 
 
 class RandomResizedCrop(object):
-    """ 裁剪给定的PIL图像到随机大小和高宽比
+    """ 裁剪给定的PIL图像到随机大小和高宽比， 不会增加黑边
     :param size: 输出的图像尺寸
     :param scale, ratio: 与目标检测时anchor生成参数类似，决定剪裁的宽高
-    :param interpolation:
+    :param interpolation: "linear",
     """
 
-    def __init__(self, size, scale=(0.7, 1.0), ratio=(3. / 4., 4. / 3.), interpolation=None):
+    def __init__(self, size, scale=(0.7, 1.0), ratio=(3. / 4., 4. / 3.), interpolation="linear",
+                 fill=0, padding_mode='constant'):
 
         if isinstance(size, (tuple, list)):
             self.size = size
@@ -317,10 +397,12 @@ class RandomResizedCrop(object):
         self.interpolation = interpolation
         self.scale = scale
         self.ratio = ratio
+        self.fill = fill
+        self.padding_mode = padding_mode
 
     @staticmethod
     def get_params(img, scale, ratio):
-        height, width = _get_image_size(img)
+        height, width = get_image_shape(img)
         area = height * width
 
         for _ in range(10):
@@ -332,9 +414,9 @@ class RandomResizedCrop(object):
             h = int(round(math.sqrt(target_area / aspect_ratio)))
 
             if 0 < w <= width and 0 < h <= height:
-                i = random.randint(0, height - h)
-                j = random.randint(0, width - w)
-                return i, j, h, w
+                top = random.randint(0, height - h)
+                left = random.randint(0, width - w)
+                return top, left, h, w
 
         # Fallback to central crop
         in_ratio = float(width) / float(height)
@@ -347,13 +429,22 @@ class RandomResizedCrop(object):
         else:  # whole image
             w = width
             h = height
-        i = (height - h) // 2
-        j = (width - w) // 2
-        return i, j, h, w
+        top = (height - h) // 2
+        left = (width - w) // 2
+        return top, left, h, w
 
-    def __call__(self, img):
-        i, j, h, w = self.get_params(img, self.scale, self.ratio)
-        return F.resized_crop(img, i, j, h, w, self.size, self.interpolation)
+    def __call__(self, result):
+        top, left, h, w = self.get_params(result[TS_IMG], self.scale, self.ratio)
+
+        result[TS_IMG] = F.resized_crop(result[TS_IMG], top, left, h, w, self.size, self.interpolation,
+                                        fill=self.fill, padding_mode=self.padding_mode)
+
+        if TS_SEG in result:
+            ignore_label = result[TS_IGNORE_LABEL]
+            result[TS_SEG] = F.resized_crop(result[TS_SEG], top, left, h, w, self.size, "nearest",
+                                            fill=ignore_label, padding_mode="constant")
+
+        return result
 
     def __repr__(self):
         format_string = self.__class__.__name__ + '(size={0}'.format(self.size)

@@ -10,6 +10,8 @@
 
 from .compose import Compose
 from .format import ToTensor, ToNumpy, ToPILImage, ToBGR, ToRGB, Normalize, UnNormalize
-from .affine import Resize, Pad, CenterCrop, RandomHorizontalFlip, RandomVerticalFlip, RandomRotation
+from .affine import Resize, Pad, CenterCrop, RandomHorizontalFlip, RandomVerticalFlip, RandomRotation, RandomAffine, \
+    RandomPerspective, RandomCrop, RandomResizedCrop
+from .enhance import Gamma, RandomGrayScale, RandomColorScale, ColorJitter
 
 __all__ = [k for k in list(globals().keys()) if not k.startswith("_")]

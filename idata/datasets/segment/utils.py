@@ -87,6 +87,15 @@ def label_read(file_path):
     return cv2.imread(file_path, cv2.IMREAD_UNCHANGED)
 
 
+# img[np.all(img != [0, 0, 255], axis=-1)] = [255, 255, 255]
+# img[np.all(img == [0, 0, 255], axis=-1)] = [0, 0, 0]
+# cv2.imwrite(path.join(PRO_DIR, "data/dog1.bmp"), img)
+
+# gt_label = np.ones(img.shape[:2], dtype=np.uint8) * 255
+# gt_label[np.all(img == [0, 0, 255], axis=-1)] = 0
+# gt_label[np.all(img == [0, 255, 0], axis=-1)] = 1
+
+
 if __name__ == "__main__":
     import cv2
     import numpy as np

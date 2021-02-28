@@ -26,6 +26,16 @@ else:
 __all__ = ["pad", "hflip", "vflip", "rotate"]
 
 
+def _parse_fill(fill, img):
+    assert len(img.shape) in [2, 3], "len(img.shape) should in [2, 3]."
+
+    shape = img.shape
+    fill = 0 if fill is None else fill
+    if len(shape) == 3 and isinstance(fill, (int, float)):
+        fill = tuple(fill for _ in range(3))
+    return fill
+
+
 def pad(img, padding, fill=0, padding_mode=cv2.BORDER_CONSTANT, meta=dict()):
     """ 为图像增加padding
     :param img: Numpy Image.
@@ -41,7 +51,7 @@ def pad(img, padding, fill=0, padding_mode=cv2.BORDER_CONSTANT, meta=dict()):
     :return: Padding image
     """
 
-    if not _is_numpy_image(img):
+    if not is_numpy_image(img):
         raise TypeError('img should be Numpy Image. Got {}'.format(type(img)))
 
     if not isinstance(padding, (numbers.Number, tuple)):
@@ -81,7 +91,7 @@ def hflip(img):
     :return: 水平翻转后图像
     """
 
-    if not _is_numpy_image(img):
+    if not is_numpy_image(img):
         raise TypeError('img should be Numpy Image. Got {}'.format(type(img)))
     return cv2.flip(img, 1)
 
@@ -92,7 +102,7 @@ def vflip(img):
     :return: 垂直翻转后图像
     """
 
-    if not _is_numpy_image(img):
+    if not is_numpy_image(img):
         raise TypeError('img should be Numpy Image. Got {}'.format(type(img)))
     return cv2.flip(img, 0)
 
@@ -135,18 +145,33 @@ def rotate(img, angle, center=None, scale=1.0, fill=0, interpolation=cv2.INTER_L
     return rotated
 
 
-def perspective(img, startpoints, endpoints):
-    """ 图像透视变换
-    :param img: Numpy Image
-    :param startpoints: List containing [top-left, top-right, bottom-right, bottom-left] of the original image
-    :param endpoints: List containing [top-left, top-right, bottom-right, bottom-left] of the transformed image
-    :return: 变换后图像
-        example: M = cv2.getAffineTransform(
-            np.array([[0, 0], [w, 0], [0, h]], np.float32),
-            np.array([[0, 0], [w, 0], [0, h//2]], np.float32)
-        )
-    """
+def affine(img, start_points, end_points, dsize=None, interpolation=cv2.INTER_LINEAR, fill=0):
+    if not is_numpy_image(img):
+        raise TypeError('img should be Numpy Image. Got {}'.format(type(img)))
 
-    h, w = img.shape[:2]
-    M = cv2.getPerspectiveTransform(np.array(startpoints, np.float32), np.array(endpoints, np.float32))
-    return cv2.warpPerspective(img, M, (w, h))
+    start_points = np.array(start_points, np.float32)
+    end_points = np.array(end_points, np.float32)
+    assert start_points.shape == end_points.shape and start_points.shape == (3, 2), "points shape should like (3,2)."
+
+    dsize = get_image_shape(img)[::-1] if dsize is None else dsize
+
+    fill = _parse_fill(fill, img)
+
+    matrix = cv2.getAffineTransform(start_points, end_points)
+    return cv2.warpAffine(img, matrix, dsize, flags=interpolation, borderValue=fill)
+
+
+def perspective(img, start_points, end_points, dsize=None, interpolation=cv2.INTER_LINEAR, fill=0):
+    if not is_numpy_image(img):
+        raise TypeError('img should be Numpy Image. Got {}'.format(type(img)))
+
+    start_points = np.array(start_points, np.float32)
+    end_points = np.array(end_points, np.float32)
+    assert start_points.shape == end_points.shape and start_points.shape == (4, 2), "points shape should like (4,2)."
+
+    dsize = get_image_shape(img)[::-1] if dsize is None else dsize
+
+    fill = _parse_fill(fill, img)
+
+    matrix = cv2.getPerspectiveTransform(start_points, end_points)
+    return cv2.warpPerspective(img, matrix, dsize, flags=interpolation, borderValue=fill)

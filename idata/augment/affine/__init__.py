@@ -27,7 +27,8 @@ else:
     Sequence = collections.abc.Sequence
     Iterable = collections.abc.Iterable
 
-__all__ = ["resize", "pad", "crop", "center_crop", "hflip", "vflip", "rotate", "five_crop"]
+__all__ = ["resize", "pad", "crop", "center_crop", "hflip", "vflip", "rotate",
+           "affine", "perspective", "five_crop"]
 
 _cv_inter_str = dict(
     linear=cv2.INTER_LINEAR,
@@ -38,6 +39,10 @@ _pil_inter_str = dict(
     linear=PIL.Image.BILINEAR,
     nearest=PIL.Image.NEAREST,
 )
+
+
+def pad_fill(pic, ):
+    pass
 
 
 def resize(pic, size, interpolation="linear", meta=dict()):
@@ -63,7 +68,7 @@ def resize(pic, size, interpolation="linear", meta=dict()):
             'interpolation should in [`linear`, `nearest`], Got interpolation string: {}'.format(interpolation))
 
     if isinstance(size, int):
-        h, w = _get_image_size(pic)
+        h, w = get_image_shape(pic)
         if (w <= h and w == size) or (h <= w and h == size):
             return pic
         elif w < h:
@@ -75,9 +80,9 @@ def resize(pic, size, interpolation="linear", meta=dict()):
         size = (ow, oh)
     meta["size"] = size
 
-    if _is_numpy_image(pic):
+    if is_numpy_image(pic):
         return cv2.resize(pic, size, interpolation=_cv_inter_str[interpolation])  # size[::-1]
-    elif _is_pil_image(pic):
+    elif is_pil_image(pic):
         return pic.resize(size, _pil_inter_str[interpolation])
     else:
         raise TypeError('pic should be Numpy or PIL Image. Got {}'.format(type(pic)))
@@ -108,51 +113,68 @@ def pad(pic, padding, fill=0, padding_mode='constant', meta=dict()):
     assert padding_mode in _str_pad_model.keys(), \
         'Padding mode should be either constant, edge, reflect or wrap'
 
-    if _is_numpy_image(pic):
+    if is_numpy_image(pic):
         return F_cv.pad(pic, padding, fill, _str_pad_model[padding_mode], meta=meta)
-    elif _is_pil_image(pic):
+    elif is_pil_image(pic):
         return F_pil.pad(pic, padding, fill, padding_mode, meta=meta)
     else:
         raise TypeError('pic should be Numpy or PIL Image. Got {}'.format(type(pic)))
 
 
-def crop(pic, top, left, height, width):
+def crop(pic, top, left, height, width, fill=0, padding_mode='constant'):
     """ 调用PIL Image剪切函数，超过图像区域，补充像素为0的Padding，适配cv2
         超出剪裁区域自动补充黑边。
     """
 
-    if _is_numpy_image(pic):
+    oh, ow = get_image_shape(pic)
+    t, l, h, w = top, left, height, width
+
+    pad_left = -l if l < 0 else 0
+    pad_top = -t if t < 0 else 0
+    pad_right = (w - ow) - pad_left if w > ow else 0
+    pad_bottom = (h - oh) - pad_top if h > oh else 0
+    padding = (pad_left, pad_top, pad_right, pad_bottom)
+
+    if sum(list(padding)) > 0:
+        # print("padding:", padding)
+        pic = pad(pic, padding, fill=fill, padding_mode=padding_mode)
+        left, top = left + pad_left, top + pad_top
+
+    if is_numpy_image(pic):
         return decorator_np_img(pic, F_pil.crop, top=top, left=left, height=height, width=width)
-    elif _is_pil_image(pic):
+    elif is_pil_image(pic):
         return F_pil.crop(pic, top, left, height, width)
     else:
         raise TypeError('pic should be Numpy or PIL Image. Got {}'.format(type(pic)))
 
 
-def center_crop(pic, output_size, meta=dict()):
+def center_crop(pic, output_size, fill=0, padding_mode='constant', meta=dict()):
     """ 剪切PIL Image，并缩放至output_size尺寸.(w, h)
     """
 
-    if not (_is_numpy_image(pic) or _is_pil_image(pic)):
+    if not (is_numpy_image(pic) or is_pil_image(pic)):
         raise TypeError('img should be Numpy or PIL Image. Got {}'.format(type(pic)))
 
     if isinstance(output_size, numbers.Number):
         output_size = (int(output_size), int(output_size))
-    image_height, image_width = _get_image_size(pic)
+    image_height, image_width = get_image_shape(pic)
     crop_width, crop_height = output_size
-    # print("image_width, image_height", image_width, image_height)
-    # print("crop_width, crop_height", crop_width, crop_height)
 
     crop_top = int(round((image_height - crop_height) / 2.))
     crop_left = int(round((image_width - crop_width) / 2.))
 
-    meta["crop"] = dict(
-        left=crop_left,
-        top=crop_top,
-        width=crop_width,
-        height=crop_height
-    )
-    return crop(pic, crop_top, crop_left, crop_height, crop_width)
+    meta["crop"] = dict(left=crop_left, top=crop_top, width=crop_width, height=crop_height)
+
+    return crop(pic, crop_top, crop_left, crop_height, crop_width, fill=fill, padding_mode=padding_mode)
+
+
+def resized_crop(pic, top, left, height, width, size, interpolation="linear",
+                 fill=0, padding_mode='constant'):
+    if not (is_numpy_image(pic) or is_pil_image(pic)):
+        raise TypeError('pic should be Numpy or PIL Image. Got {}'.format(type(pic)))
+
+    pic = crop(pic, top, left, height, width, fill=fill, padding_mode=padding_mode)
+    return resize(pic, size, interpolation)
 
 
 def hflip(pic: Tensor) -> Tensor:
@@ -161,9 +183,9 @@ def hflip(pic: Tensor) -> Tensor:
     :return: 水平翻转后图像
     """
 
-    if _is_numpy_image(pic):
+    if is_numpy_image(pic):
         return F_cv.hflip(pic)
-    elif _is_pil_image(pic):
+    elif is_pil_image(pic):
         return F_pil.hflip(pic)
     elif isinstance(pic, torch.Tensor):
         return F_t.hflip(pic)
@@ -177,9 +199,9 @@ def vflip(pic: Tensor) -> Tensor:
     :return: 垂直翻转后图像
     """
 
-    if _is_numpy_image(pic):
+    if is_numpy_image(pic):
         return F_cv.vflip(pic)
-    elif _is_pil_image(pic):
+    elif is_pil_image(pic):
         return F_pil.vflip(pic)
     elif isinstance(pic, torch.Tensor):
         return F_t.vflip(pic)
@@ -199,14 +221,38 @@ def rotate(pic, angle, center=None, fill=None, interpolation="linear", expand=Fa
     :return:
     """
 
-    if _is_numpy_image(pic):
+    if is_numpy_image(pic):
         return F_cv.rotate(pic, angle, center=center, fill=fill,
                            interpolation=_cv_inter_str[interpolation], expand=expand)
-    elif _is_pil_image(pic):
+    elif is_pil_image(pic):
         return F_pil.rotate(pic, angle, center=center, fill=fill,
                             interpolation=_pil_inter_str[interpolation], expand=expand)
     else:
         raise TypeError('pic should be Numpy/PIL/Tensor Image. Got {}'.format(type(pic)))
+
+
+def affine(pic, start_points, end_points, dsize=None, interpolation="linear", fill=0):
+    if is_numpy_image(pic):
+        return F_cv.affine(pic, start_points, end_points, dsize=dsize,
+                           interpolation=_cv_inter_str[interpolation], fill=fill)
+    elif is_pil_image(pic):
+        return decorator_pil_img(pic, F_cv.affine, start_points=start_points,
+                                 end_points=end_points, dsize=dsize,
+                                 interpolation=_pil_inter_str[interpolation], fill=fill)
+    else:
+        raise TypeError('pic should be Numpy or PIL Image. Got {}'.format(type(pic)))
+
+
+def perspective(pic, start_points, end_points, dsize=None, interpolation="linear", fill=0):
+    if is_numpy_image(pic):
+        return F_cv.perspective(pic, start_points, end_points, dsize=dsize,
+                                interpolation=_cv_inter_str[interpolation], fill=fill)
+    elif is_pil_image(pic):
+        return decorator_pil_img(pic, F_cv.perspective, start_points=start_points,
+                                 end_points=end_points, dsize=dsize,
+                                 interpolation=_pil_inter_str[interpolation], fill=fill)
+    else:
+        raise TypeError('pic should be Numpy or PIL Image. Got {}'.format(type(pic)))
 
 
 def five_crop(pic, size):
@@ -218,7 +264,7 @@ def five_crop(pic, size):
     else:
         assert len(size) == 2, "Please provide only two dimensions (h, w) for size."
 
-    image_height, image_width = _get_image_size(pic)
+    image_height, image_width = get_image_shape(pic)
     crop_width, crop_height = size
     if crop_width > image_width or crop_height > image_height:
         msg = "Requested crop size {} is bigger than input size {}"

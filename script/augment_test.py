@@ -60,7 +60,6 @@ def test():
 
 if __name__ == "__main__":
     img_path = path.join(PRO_DIR, "datasets/dog.jpg")
-    # test_img()
-    # test_pil_img()
+
     test()
     pass
