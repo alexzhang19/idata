@@ -54,7 +54,6 @@ if __name__ == "__main__":
     # test()
     # dict_test()
 
-    PRO_DIR = "/home/temp/dog"
     img = cv2.imread(path.join(PRO_DIR, "data/dog.jpg"))
 
     gt_label = np.ones((720, 720), dtype=np.uint8)
@@ -70,6 +69,5 @@ if __name__ == "__main__":
     std = np.array([58.395, 57.12, 57.375]) / 255
 
     # test()
-
     # dict_test()
     pass

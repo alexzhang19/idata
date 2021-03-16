@@ -83,7 +83,7 @@ def img_write(file_path, img, ratio=None):
     cv2.imwrite(file_path, img, params)
 
 
-def img_compress(img, suffix=".png", ratio=0):
+def img_compress(img, suffix=".jpg", ratio=0):
     assert suffix in [".png", ".jpg"]
     if suffix == ".png":
         # 取值范围：0~9，数值越小，压缩比越低，图片质量越高

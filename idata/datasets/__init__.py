@@ -22,7 +22,7 @@ __all__ = [
     "YoloData",
 ]
 
-_root_dir = "/home/temp" if platform.system() == "Linux" else "F:/datasets/datasets"
+_root_dir = "/home/temp" if platform.system() == "Linux" else "F:/dataset/data"
 
 # 数据目录
 DCFG = edict(dict(

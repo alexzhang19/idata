@@ -53,7 +53,7 @@ def gauss_blur(img, degree=7, sigmaX=0, sigmaY=0):
 
 def gauss_noise(img, degree=None):
     """ 在每个像素点添加随机扰动
-    :param degree: [0,1]
+    :param degree:  > 0
     url: https://www.cnblogs.com/arkenstone/p/8480759.html
     """
 

@@ -60,15 +60,17 @@ class RandomGrayScale(object):
         if _random.random() > self.p:
             return result
 
-        avg = None
+        avg_list = []
         if self.random:
             org_avg = int(np.mean(result[TS_IMG]))
             expend = max(min(org_avg, 20), min(20, 255 - org_avg))
-            avg = int(_random.randint(max(org_avg - expend, 0), max(org_avg + expend, 0)))
+            for i in range(3):
+                avg = int(_random.randint(max(org_avg - expend, 0), min(org_avg + expend, 255)))
+                avg_list.append(avg)
 
-        result[TS_IMG] = F.grayscale(result[TS_IMG], avg=avg)
+        result[TS_IMG] = F.grayscale(result[TS_IMG], avg=avg_list)
         result[TS_META][self.__class__.__name__.lower()] = dict(
-            p=self.p, random=self.random, org_avg=org_avg, avg=avg)
+            p=self.p, random=self.random, org_avg=org_avg, avg_list=avg_list)
         return result
 
 
