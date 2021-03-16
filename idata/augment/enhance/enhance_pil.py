@@ -44,7 +44,6 @@ def adjust_brightness(img, brightness_factor):
     :return: 亮度调整后图像
     """
 
-    print("brightness_factorggggggggggg: ", brightness_factor)
     if not is_pil_image(img):
         raise TypeError('img should be PIL Image. Got {}'.format(type(img)))
 

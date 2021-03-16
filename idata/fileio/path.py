@@ -21,7 +21,7 @@ __all__ = [
     "path", "desktop", "is_set", "is_contain_zh",
 
     # path
-    "path_split", "key_name", "suffix",
+    "path_split", "key_name", "suffix", "re_suffix",
 
     # os
     "mkdir", "cp", "rm", "mv", "ls", "pwd", "walk_file", "symlink",
@@ -58,7 +58,7 @@ def is_contain_zh(word: str) -> bool:
 
 
 # path
-def path_split(str_path: str) -> list:
+def path_split(str_path: str, reverse=False) -> list:
     """
     路径拆分，按目录存储至rets中.
     str_path: 路径
@@ -73,6 +73,9 @@ def path_split(str_path: str) -> list:
                 rets.insert(0, str_path)
             break
         rets.insert(0, item)
+
+    if reverse:
+        rets.reverse()
     return rets
 
 
@@ -221,3 +224,9 @@ def walk_file(dir_path: str, sub_dir: str = "", filter: str = "") -> list:
 
 
 IMG_SUFFIX = [".jpg", ".JPG", ".jpeg", ".JPEG", ".png", ".PNG", ".bmp", ".BMP"]
+
+
+def re_suffix(suffixs: list = []) -> str:
+    if len(suffixs) == 0:
+        suffixs = suffixs
+    return "$|".join(suffixs) + "$"

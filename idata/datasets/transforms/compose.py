@@ -13,10 +13,13 @@ import collections
 from ..build import TRANSFORMS
 from idata.augment.utils import *
 from collections import OrderedDict
+from idata.utils.type import *
 
-__all__ = ["Compose", "TS_IMG", "TS_SEG", "TS_META", "TS_ORG_SHAPE", "TS_IMG_SHAPE", "TS_IGNORE_LABEL"]
+__all__ = ["Compose", "TS_LABEL", "TS_IMG", "TS_SEG", "TS_META", "TS_ORG_SHAPE",
+           "TS_IMG_SHAPE", "TS_IGNORE_LABEL"]
 
 TS_IMG = "img"
+TS_LABEL = "gt_label"
 TS_SEG = "gt_seg"
 TS_META = "metas"
 TS_ORG_SHAPE = "org_shape"  # 原始大小
@@ -60,7 +63,11 @@ class Compose(object):
         elif type(data) == dict:
             result = copy.deepcopy(data)
         else:
-            raise TypeError('data must be dict or img')
+            # 图片以外的其它类型，真值标记类型
+            for t in self.transforms:
+                data = t(data)
+            return data
+            # raise TypeError('data must be dict or img')
 
         result[TS_META] = OrderedDict()
         result[TS_IGNORE_LABEL] = self.ignore_label

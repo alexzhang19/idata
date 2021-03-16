@@ -13,14 +13,16 @@ import os.path as osp
 from easydict import EasyDict as edict
 
 from .simulate import ShapeData, ShapeType
-from idata.datasets.classify import CIFAR100
+from idata.datasets.classify import CIFAR100, ClsData, ClsDataVis
+from .detect.yolo import YoloData
 
 __all__ = [
     "DCFG", "ShapeData", "ShapeType",
-    "CIFAR100",
+    "CIFAR100", "ClsData", "ClsDataVis",
+    "YoloData",
 ]
 
-_root_dir = "/home/datasets" if platform.system() == "Linux" else "F:/datasets/datasets"
+_root_dir = "/home/temp" if platform.system() == "Linux" else "F:/datasets/datasets"
 
 # 数据目录
 DCFG = edict(dict(

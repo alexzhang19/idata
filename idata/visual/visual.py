@@ -18,7 +18,7 @@ __all__ = [
     "random_color",
     "find_counters", "draw_counters",
     "bounding_rect", "get_masks_rgns", "draw_rectangle", "put_text", "put_text_ex",
-    "draw_mask", "merge_ret",
+    "draw_mask", "merge_ret", "draw_detect_boxes",
 ]
 
 
@@ -136,6 +136,46 @@ def draw_rectangle(image, boxes, colors=(0, 0, 255), thickness=2, dot=False):
             cv2.rectangle(image, (x1, y1), (x2, y2), color=tuple(color), thickness=thickness)
         else:
             _rectangle_dot(image, (x1, y1), (x2, y2), color=tuple(color), thickness=thickness)
+    return image
+
+
+def draw_detect_boxes(img, labels, cmaps=None, label_names=None,
+                      fontFace=cv2.FONT_HERSHEY_COMPLEX_SMALL,
+                      fontScale=1.2, thickness=2):
+    """ yolo boxes
+        img = cv2.imread("dog.jpg")
+        ret = draw_detect_boxes(img, np.array([[0, 100, 100, 400, 400]]), [[0, 255, 255]], ["cat asda"])
+        cv2.imwrite("dog111.jpg", ret)
+    """
+
+    image = copy.deepcopy(img)
+    img_h, img_w = image.shape[:2]
+    for idx, label in enumerate(labels):
+        [cls, x1, y1, x2, y2] = label
+        cls_color = cmaps[cls]
+        image = cv2.rectangle(image, (x1, y1), (x2, y2), cls_color, thickness=thickness)
+        try:
+            obj_name = label_names[idx]
+        except:
+            obj_name = "%d" % cls
+        # cv2.getTextSize(obj_name, cv2.FONT_HERSHEY_COMPLEX_SMALL, 1.2, 2)
+        (tw, th), _ = cv2.getTextSize(obj_name, fontFace, fontScale, thickness)
+        is_cut = False
+        while tw > x2 - x1:
+            obj_name = obj_name[:int(len(obj_name) * 0.9)]
+            (tw, th), _ = cv2.getTextSize(obj_name, fontFace, fontScale, thickness)
+            is_cut = True
+        if is_cut:
+            obj_name += "..."
+            (tw, th), _ = cv2.getTextSize(obj_name, fontFace, fontScale, thickness)
+
+        th += 4
+        image = cv2.rectangle(image, (max(x1 - thickness // 2, 0), max(y1 - th, 0)),
+                              (min(img_w, x2 + thickness // 2), y1),
+                              cls_color, thickness=cv2.FILLED)
+
+        image = cv2.putText(image, obj_name, (x1, max(y1 - 2, 0)), cv2.FONT_HERSHEY_COMPLEX_SMALL,
+                            color=(0, 0, 0), fontScale=fontScale * 1.0, thickness=thickness)
     return image
 
 

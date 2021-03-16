@@ -1,2 +1,4 @@
 data/
 idata.egg-info/
+*.xml
+.idea/idata.iml

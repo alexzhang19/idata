@@ -13,11 +13,8 @@ import cv2
 import math
 import random
 import numpy as np
-from enum import Enum, unique
-from torch.utils.data import Dataset
-from idata.datasets.segment import order_to_label
 
-__all__ = ["ShapeType", "ShapeType"]
+__all__ = ["ShapeBase"]
 
 
 def non_max_suppression(boxes, scores, threshold):
@@ -41,7 +38,7 @@ def non_max_suppression(boxes, scores, threshold):
         i = ixs[0]
         pick.append(i)
         # Compute IoU of the picked box with the rest
-        iou = compute_iou(boxes[i], boxes[ixs[1:]], area[i], area[ixs[1:]])
+        iou = compute_miou(boxes[i], boxes[ixs[1:]], area[i], area[ixs[1:]])
         # indicies into ixs.
         remove_ixs = np.where(iou > threshold)[0] + 1
         # Remove indicies of the picked and overlapped boxes.
@@ -50,54 +47,41 @@ def non_max_suppression(boxes, scores, threshold):
     return np.array(pick, dtype=np.int32)
 
 
-def compute_iou(box, boxes, box_area, boxes_area):
+def compute_miou(box, boxes, box_area, boxes_area):
     x1 = np.maximum(box[0], boxes[:, 0])
     y1 = np.maximum(box[1], boxes[:, 1])
     x2 = np.minimum(box[2], boxes[:, 2])
     y2 = np.minimum(box[3], boxes[:, 3])
     intersection = np.maximum(x2 - x1, 0) * np.maximum(y2 - y1, 0)
-    union = box_area + boxes_area[:] - intersection[:]
-    iou = intersection / union
-    return iou
+    # union = box_area + boxes_area[:] - intersection[:]
+    compute_miou = intersection / np.minimum(box_area, boxes_area[:]) + 1e-4
+    return compute_miou
 
 
-@unique
-class ShapeType(Enum):
-    normal = 0  # 原始标签
-    classify = 1  # 分类
-    segment = 2  # 分割
-    detect = 3  # 检测
-    instance = 4  # 实例分割
-    attribute = 5  # 多属性
-
-
-class ShapeData(Dataset):
-    NAME = "ShapeData"
+class ShapeBase(object):
+    NAME = "ShapeBase"
     MAX_NUM = 4
-    IGNORE_LABEL = 255
     MASK_VALUE = 1
+
+    BG_COLOR_RANGE = [50, 200]  # 背景图像RGB颜色范围
 
     CLASSES = ["triangle", "circle", "square", "plus", "annulus"]
     PALETTE = [[128, 0, 0], [0, 128, 0], [0, 0, 128],
                [0, 128, 128], [128, 0, 128]]
 
-    def __init__(self, total_cnt: int = 30000, shape=(128, 128), type: ShapeType = ShapeType.normal,
-                 transform=None, target_transform=None):
+    def __init__(self, total_cnt: int = 3000, shape=(128, 128)):
+        """
+        :param shape: (h, w)
+        """
+
         assert total_cnt > 0, "datasets image count mast > 0"
+        assert len(self.CLASSES) == len(self.PALETTE), "class num should match pipette length."
 
         self.shape = shape
-        self.type = type
-        self.transform = transform
-        self.target_transform = target_transform
-
-        if type == ShapeType.classify:
-            self.MAX_NUM = 1
+        self.total_cnt = total_cnt
 
         # mesh_square, mesh_circle
-        # self.classes = ["triangle", "circle", "square", "plus", "annulus"]
         self._data_dicts = [tuple(self.random_image()) for _ in range(total_cnt)]
-        self.data_dir = None
-        self.test_mode = False
 
     @property
     def classes(self):
@@ -116,18 +100,12 @@ class ShapeData(Dataset):
         return len(self._data_dicts)
 
     def __getitem__(self, index):
-        """ masks: (cnt, height, width), masks值为0,1， uint8
+        """ 实例分割结果输出， masks: (cnt, height, width), masks值为0,1， uint8
         """
 
         bg_color, shapes = self._data_dicts[index]
         img, masks, class_ids = self.load_image(bg_color, shapes)
-        target = self.data_trans(masks, class_ids)
-
-        if self.transform is not None:
-            img = self.transform(img)
-        if self.target_transform is not None:
-            target = self.target_transform(target)
-        return img, target
+        return img, masks, class_ids
 
     def _random_shape(self, height, width):
         shape = random.choice(list(self.classes))
@@ -135,14 +113,14 @@ class ShapeData(Dataset):
 
         # Center x, y, r为半径
         b_size = int(min(self.shape[0], self.shape[1]) / 2)
-        buffer = int(b_size * 0.2)
+        buffer = int(b_size * 0.15)
         x = random.randint(buffer, width - buffer - 1)
         y = random.randint(buffer, height - buffer - 1)
         r = random.randint(buffer, int(b_size * 0.4))
         return shape, color, (x, y, r)
 
     def random_image(self):
-        bg_color = np.array([random.randint(50, 200) for _ in range(3)])
+        bg_color = np.array([random.randint(self.BG_COLOR_RANGE[0], self.BG_COLOR_RANGE[1]) for _ in range(3)])
 
         shapes, boxes = [], []
         height, width = self.shape
@@ -151,10 +129,11 @@ class ShapeData(Dataset):
             shape, color, dims = self._random_shape(height, width)
             shapes.append((shape, color, dims))
             x, y, r = dims
-            boxes.append([x - r, y - r, x + r, y + r])
+            boxes.append([max(x - r, 0), max(y - r, 0),
+                          min(x + r, width), min(y + r, height)])  # [x1, y1, x2, y2]
 
         # Apply non-max suppression wit 0.3 threshold to avoid shapes covering each other
-        keep_ixs = non_max_suppression(np.array(boxes), np.arange(N), 0.1)
+        keep_ixs = non_max_suppression(np.array(boxes), np.arange(N), 0.5)
         shapes = [s for i, s in enumerate(shapes) if i in keep_ixs]
         return bg_color, shapes
 
@@ -183,7 +162,7 @@ class ShapeData(Dataset):
             elif shape == "annulus":
                 image, masks[idx] = self.add_annulus(image, masks[idx], dims, color, bg_color)
             else:
-                raise ValueError(f"Unsupported Type: {self.type}")
+                raise ValueError(f"Unsupported Shape Type: {shape}")
         return image, masks, class_ids
 
     def add_triangle(self, image, mask, dims, color):
@@ -227,45 +206,10 @@ class ShapeData(Dataset):
         mask = cv2.circle(mask, (x, y), int(r * 0.85), 0, -1)
         return image, mask
 
-    def data_trans(self, masks, class_ids):
-        # masks => dim, height, width
-        # height, width = self.shape
-        if self.type == ShapeType.normal:
-            return masks, class_ids
-        elif self.type == ShapeType.classify:
-            assert len(class_ids) == 1, "classify datasets shoule only have one category."
-            return int(class_ids[0])
-        elif self.type == ShapeType.segment:
-            return order_to_label(masks, class_ids)
-        elif self.type == ShapeType.detect:
-            # print(np.max(masks), np.min(masks))
-            # dim, height, width = masks.shape  # 0~1
-            # print("dim, height, width:", dim, height, width)
-            rets = []
-            masks = (masks * 255).astype(np.uint8)
-            for idx, mask in enumerate(masks):
-                counters, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-                for cnt in counters:
-                    (x0, y0, w0, h0) = cv2.boundingRect(cnt)
-                    rets.append([class_ids[idx], int(x0), int(y0), int(x0 + w0), int(y0 + h0)])
-            return rets
-        else:
-            raise ValueError(f"Unsupported Type: {self.type}")
-
 
 if __name__ == "__main__":
     import cv2
     import numpy as np
-    from idata.fileio import *
-    from idata.visual.visual import *
 
-    dataset = ShapeData(1, shape=(256, 256), type=ShapeType.segment)
-    image, gt_label = dataset[0]
-    print(image.shape, gt_label.shape)
-
-    cv2.imwrite(path.join(desktop, "image.jpg"), image)
-    cv2.imwrite(path.join(desktop, "label.jpg"), gt_label)
-
-    blank = np.ones((256, 256, 3), dtype=np.uint8) * 255
-    label_show = draw_mask(blank, gt_label, cmap=dataset.PALETTE, alfa=1)
-    cv2.imwrite(path.join(desktop, "label_show.jpg"), label_show)
+    img, masks, class_ids = ShapeBase()[0]
+    print(img.shape, masks.shape, np.min(masks), np.max(masks), class_ids)

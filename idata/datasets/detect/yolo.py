@@ -126,9 +126,9 @@ class YoloData(BaseDataset):
 
     def get_label_path(self, img_path):
         if self.ANNO_DIR is None:
-            return path.join(path.dirname(img_path), keyname(img_path) + ".txt")
+            return path.join(path.dirname(img_path), key_name(img_path) + ".txt")
         else:
-            return path.join(self.data_dir, self.ANNO_DIR, keyname(img_path) + ".txt")
+            return path.join(self.data_dir, self.ANNO_DIR, key_name(img_path) + ".txt")
 
     @staticmethod
     def anno_parse(file_path, shape=None):

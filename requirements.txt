@@ -5,3 +5,6 @@ addict
 scipy
 easydict
 pillow>=3.4.2
+onnx-simplifier
+onnx
+torchnet

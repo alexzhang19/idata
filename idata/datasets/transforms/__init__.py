@@ -13,5 +13,7 @@ from .format import ToTensor, ToNumpy, ToPILImage, ToBGR, ToRGB, Normalize, UnNo
 from .affine import Resize, Pad, CenterCrop, RandomHorizontalFlip, RandomVerticalFlip, RandomRotation, RandomAffine, \
     RandomPerspective, RandomCrop, RandomResizedCrop
 from .enhance import Gamma, RandomGrayScale, RandomColorScale, ColorJitter
+from .quality import MotionBlur, GaussBlur, GaussNoise, AdjustCompress
+from .decorator import Lambda
 
 __all__ = [k for k in list(globals().keys()) if not k.startswith("_")]

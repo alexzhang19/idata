@@ -9,5 +9,7 @@
 """
 
 from .cifar import CIFAR100
+from .classify import ClsData
+from .classify_vis import ClsDataVis
 
-__all__ = ["CIFAR100"]
+__all__ = ["CIFAR100", "ClsData", "ClsDataVis"]
