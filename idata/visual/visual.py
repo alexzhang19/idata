@@ -43,6 +43,7 @@ def find_counters(mask, mode=cv2.RETR_EXTERNAL, method=cv2.CHAIN_APPROX_SIMPLE):
 def draw_counters(image, contours, contourIdx=-1, color=(0, 0, 255), thickness=2):
     """
     图像上画轮廓
+    contours: [cnt1, cnt2, ...], cnt1.shape = (N, 1, 2), cnt1.dtype= int32
     """
 
     if 2 == len(image.shape):

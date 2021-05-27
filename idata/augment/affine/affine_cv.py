@@ -80,7 +80,8 @@ def pad(img, padding, fill=0, padding_mode=cv2.BORDER_CONSTANT, meta=dict()):
         if len(img.shape) == 3 and type(fill) == int:
             fill = [fill, fill, fill]
 
-    meta["padding"] = dict(top=pad_top, bottom=pad_bottom, left=pad_left, right=pad_right)
+    meta["org_shape"] = get_image_shape(img)
+    meta["padding"] = [pad_left, pad_top, pad_right, pad_bottom]
 
     return cv2.copyMakeBorder(img, pad_top, pad_bottom, pad_left, pad_right, borderType=padding_mode, value=fill)
 

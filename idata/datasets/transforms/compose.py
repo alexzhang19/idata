@@ -15,12 +15,13 @@ from idata.augment.utils import *
 from collections import OrderedDict
 from idata.utils.type import *
 
-__all__ = ["Compose", "TS_LABEL", "TS_IMG", "TS_SEG", "TS_META", "TS_ORG_SHAPE",
+__all__ = ["Compose", "TS_LABEL", "TS_IMG", "TS_SEG", "TS_BOX", "TS_META", "TS_ORG_SHAPE",
            "TS_IMG_SHAPE", "TS_IGNORE_LABEL"]
 
 TS_IMG = "img"
-TS_LABEL = "gt_label"
-TS_SEG = "gt_seg"
+TS_LABEL = "gt_label"  # 分类
+TS_SEG = "gt_seg"  # 分割
+TS_BOX = "gt_boxes"  # 检测, [[cls, x1, y1, x2, y2], ...]
 TS_META = "metas"
 TS_ORG_SHAPE = "org_shape"  # 原始大小
 TS_IMG_SHAPE = "img_shape"  # 当前大小

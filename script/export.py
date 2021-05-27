@@ -33,7 +33,7 @@ def export_onnx():
     model.fc = nn.Sequential(model.fc, nn.Softmax(dim=1))  # 增加 softmax 作为输出结果
     model.eval()
 
-    example = torch.rand(1, 3, 224, 224)
+    example = torch.rand(1, 3, 112, 112)
     input_names = ["input_0"]
     output_names = ["output_0"]
     output_path = "resnet18.onnx"
@@ -133,4 +133,5 @@ def h5_to_pb(h5_path, export_path):
 
 if __name__ == "__main__":
     # export_torch_script()
+    export_onnx()
     pass

@@ -13,6 +13,7 @@ import torch
 import numbers
 import numpy as np
 from ..utils import is_pil_image
+from idata.augment.utils import *
 from collections.abc import Sequence, Iterable
 from PIL import Image, ImageOps, __version__ as PILLOW_VERSION
 
@@ -91,7 +92,9 @@ def pad(img, padding, fill=0, padding_mode='constant', meta=dict()):
         pad_top = padding[1]
         pad_right = padding[2]
         pad_bottom = padding[3]
-    meta["padding"] = dict(top=pad_top, bottom=pad_bottom, left=pad_left, right=pad_right)
+
+    meta["org_shape"] = get_image_shape(img)
+    meta["padding"] = [pad_left, pad_top, pad_right, pad_bottom]
 
     padding = tuple([pad_left, pad_top, pad_right, pad_bottom])
     if padding_mode == 'constant':

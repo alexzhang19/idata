@@ -85,7 +85,7 @@ def grayscale(pic, avg=None):
         raise TypeError('pic should be Numpy or PIL Image. Got {}'.format(type(pic)))
 
 
-def his_equal_color(pic, limit=4.0, grid=(8, 8)):
+def his_equal_color(pic, limit=4.0, grid=(16, 16)):
     if is_numpy_image(pic):
         return F_cv.his_equal_color(pic, limit=limit, grid=grid)
     elif is_pil_image(pic):

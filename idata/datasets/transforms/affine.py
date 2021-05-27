@@ -22,7 +22,7 @@ from idata.augment.utils import get_image_shape
 __all__ = [
     "Resize", "Pad", "CenterCrop", "RandomHorizontalFlip", "RandomVerticalFlip",
     "RandomRotation", "RandomAffine", "RandomPerspective",
-    "RandomCrop", "RandomResizedCrop",
+    "RandomCrop", "RandomResizedCrop", "ResizedCrop",
 ]
 
 """
@@ -35,11 +35,14 @@ __all__ = [
 class Resize(object):
     """ Resize img & seg.
     等比例缩放.
-            1) 若size为int,以输入图最短边作为缩放依据,长边等比例缩放;
+            1) 若size为int,
+                mode为'big'时，以输入图最短边作为缩放依据,长边等比例缩放，输出图较大(default);
+                mode为'small'时，以输入图最长边作为缩放依据,短边等比例缩放，输出图较小;
             2) 若size为(w, h),输出图非等比例缩放至预定大小.
     :param img: PIL Image or Numpy Image.
     :param size: (sequence or int)
     :param interpolation: 'linear' or 'nearest', default='linear'
+    :param mode: 'big' or 'small', default='big'
     :return: Resized image.
     example:
         ret = resize(img, size) # img, (w, h) = (100, 200)
@@ -48,18 +51,26 @@ class Resize(object):
         size = (30, 50), ret, (w, h) = (30, 50).
     """
 
-    def __init__(self, size, interpolation="linear"):
+    def __init__(self, size, interpolation="linear", mode="big"):
         assert isinstance(size, int) or (isinstance(size, Iterable) and len(size) == 2)
         self.size = size
+        self.mode = mode
         self.interpolation = interpolation
 
     def __call__(self, result):
         meta = dict()
-        result[TS_IMG] = F.resize(result[TS_IMG], self.size, self.interpolation, meta=meta)
-        # print("Resize meta:", meta)
+        result[TS_IMG] = F.resize(result[TS_IMG], self.size, self.interpolation, mode=self.mode, meta=meta)
+        print("Resize meta:", meta)
 
         if TS_SEG in result:
-            result[TS_SEG] = F.resize(result[TS_SEG], self.size, "nearest")
+            result[TS_SEG] = F.resize(result[TS_SEG], self.size, "nearest", mode=self.mode)
+        if TS_BOX in result:
+            nh, nw = meta["shape"]
+            oh, ow = meta["org_shape"]
+            w_ratio, h_ratio = nw / ow, nh / oh
+            for idx, gt_box in enumerate(result[TS_BOX]):
+                [cls, x1, y1, x2, y2] = gt_box
+                result[TS_BOX][idx] = [cls, x1 * w_ratio, y1 * h_ratio, x2 * w_ratio, y2 * h_ratio]
 
         return result
 
@@ -94,13 +105,17 @@ class Pad(object):
     def __call__(self, result):
         meta = dict()
         result[TS_IMG] = F.pad(result[TS_IMG], self.padding, self.fill, self.padding_mode, meta=meta)
-        # print("Pad meta:", meta)
+        print("Pad meta:", meta)
 
         if TS_SEG in result:
             ignore_label = result[TS_IGNORE_LABEL]
             result[TS_SEG] = F.pad(result[TS_SEG], self.padding, ignore_label,
                                    padding_mode="constant")
-
+        if TS_BOX in result:
+            [pad_left, pad_top, _, _] = meta["padding"]
+            for idx, gt_box in enumerate(result[TS_BOX]):
+                [cls, x1, y1, x2, y2] = gt_box
+                result[TS_BOX][idx] = [cls, x1 + pad_left, y1 + pad_top, x2 + pad_left, y2 + pad_top]
         return result
 
     def __repr__(self):
@@ -451,3 +466,47 @@ class RandomResizedCrop(object):
         format_string += ', scale={0}'.format(tuple(round(s, 4) for s in self.scale))
         format_string += ', ratio={0}'.format(tuple(round(r, 4) for r in self.ratio))
         return format_string
+
+
+######
+class ResizedCrop(object):
+    """ Resize img & seg.
+    等比例缩放.
+            1) 若size为int,
+                mode为'big'时，以输入图最短边作为缩放依据,长边等比例缩放，输出图较大(default);
+                mode为'small'时，以输入图最长边作为缩放依据,短边等比例缩放，输出图较小;
+            2) 若size为(w, h),输出图非等比例缩放至预定大小.
+    :param img: PIL Image or Numpy Image.
+    :param size: (sequence or int)
+    :param interpolation: 'linear' or 'nearest', default='linear'
+    :param mode: 'big' or 'small', default='big'
+    :return: Resized image.
+    example:
+        ret = resize(img, size) # img, (w, h) = (100, 200)
+        size = 50, ret, (w, h) = (50, 100);
+        size = 200, ret, (w, h) = (200, 400);
+        size = (30, 50), ret, (w, h) = (30, 50).
+    """
+
+    def __init__(self, size, interpolation="linear", mode="small"):
+        assert isinstance(size, int) or (isinstance(size, Iterable) and len(size) == 2)
+        self.size = size
+        self.mode = mode
+        self.interpolation = interpolation
+
+    def __call__(self, result):
+        result = Resize(self.size, self.interpolation, mode=self.mode)(result)
+        img_h, img_w = get_image_shape(result[TS_IMG])
+
+        pad_left, pad_top, pad_right, pad_bottom = 0, 0, 0, 0
+        if img_h > img_w:
+            pad_left = (img_h - img_w) // 2
+            pad_right = img_h - img_w - pad_left
+        else:
+            pad_top = (img_w - img_h) // 2
+            pad_bottom = img_w - img_h - pad_top
+        result = Pad((pad_left, pad_top, pad_right, pad_bottom))(result)
+        return result
+
+    def __repr__(self):
+        return self.__class__.__name__ + '(size={0})'.format(self.size)

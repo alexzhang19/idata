@@ -45,13 +45,16 @@ def pad_fill(pic, ):
     pass
 
 
-def resize(pic, size, interpolation="linear", meta=dict()):
+def resize(pic, size, interpolation="linear", mode="big", meta=dict()):
     """ 等比例缩放.
-            1) 若size为int,以输入图最短边作为缩放依据,长边等比例缩放;
+            1) 若size为int,
+                mode为'big'时，以输入图最短边作为缩放依据,长边等比例缩放，输出图较大(default);
+                mode为'small'时，以输入图最长边作为缩放依据,短边等比例缩放，输出图较小;
             2) 若size为(w, h),输出图非等比例缩放至预定大小.
     :param pic: Numpy or PIL Image.
     :param size: (sequence or int)
     :param interpolation: 'linear' or 'nearest'
+    :param mode: 'big' or 'small', default='big'
     :return: Resized image.
     example:
         ret = resize(img, size) # img, (w, h) = (100, 200)
@@ -67,23 +70,37 @@ def resize(pic, size, interpolation="linear", meta=dict()):
         raise TypeError(
             'interpolation should in [`linear`, `nearest`], Got interpolation string: {}'.format(interpolation))
 
+    if mode not in ['big', 'small']:
+        raise TypeError(
+            'mode should in [`big`, `small`], Got mode string: {}'.format(mode))
+
     if isinstance(size, int):
         h, w = get_image_shape(pic)
         if (w <= h and w == size) or (h <= w and h == size):
             return pic
-        elif w < h:
-            ow = size
-            oh = int(size * h / w)
-        else:
-            oh = size
-            ow = int(size * w / h)
-        size = (ow, oh)
-    meta["size"] = size
+        elif mode == "big":
+            if w < h:
+                ow = size
+                oh = int(size * h / w)
+            else:
+                oh = size
+                ow = int(size * w / h)
+        elif mode == "small":
+            if w < h:
+                oh = size
+                ow = int(size * h / w)
+            else:
+                ow = size
+                oh = int(size * h / w)
+
+        img_shape = (oh, ow)
+    meta["shape"] = img_shape
+    meta["org_shape"] = (h, w)
 
     if is_numpy_image(pic):
-        return cv2.resize(pic, size, interpolation=_cv_inter_str[interpolation])  # size[::-1]
+        return cv2.resize(pic, img_shape[::-1], interpolation=_cv_inter_str[interpolation])  # size[::-1]
     elif is_pil_image(pic):
-        return pic.resize(size, _pil_inter_str[interpolation])
+        return pic.resize(img_shape[::-1], _pil_inter_str[interpolation])
     else:
         raise TypeError('pic should be Numpy or PIL Image. Got {}'.format(type(pic)))
 
